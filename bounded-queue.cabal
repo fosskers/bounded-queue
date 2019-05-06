@@ -2,6 +2,9 @@ cabal-version: 2.2
 
 name:           bounded-queue
 version:        1.0.0
+synopsis:       A strict, immutable, thread-safe, single-ended, bounded queue.
+description:    A strict, immutable, thread-safe, single-ended, bounded queue
+                which automatically forgets old values instead of blocking.
 category:       Data
 homepage:       https://gitlab.com/fosskers/bounded-queue
 author:         Colin Woodbury
@@ -22,14 +25,9 @@ common commons
 library
   import: commons
   hs-source-dirs: lib
-
   exposed-modules: Data.Queue.Bounded
-
   build-depends: containers
                , deepseq
-               , strict-list >= 0.1
-               , vector >= 0.12
-
 
 benchmark bounded-queue-bench
   import: commons
@@ -37,6 +35,5 @@ benchmark bounded-queue-bench
   main-is: Bench.hs
   hs-source-dirs: bench
   ghc-options: -threaded -O2 -with-rtsopts=-N
-
   build-depends: bounded-queue
                , criterion >= 1.5
