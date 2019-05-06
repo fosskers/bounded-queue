@@ -44,6 +44,7 @@ import           Data.Sequence (Seq(..), (<|))
 import qualified Data.Sequence as Seq
 import           GHC.Generics (Generic)
 import           Prelude hiding (drop, reverse, take)
+import qualified Prelude as P
 
 ---
 
@@ -85,7 +86,9 @@ singleton l a = BQueue (Seq.singleton a) l 1
 -- (as defined by the given limiting `Int` value) and does not attempt any
 -- elegant queue-like cycling.
 fromList :: Int -> [a] -> BQueue a
-fromList n list = undefined
+fromList n list = BQueue (Seq.fromList list') n $ length list'
+  where
+    list' = P.take n list
 
 -- | \(\mathcal{O}(1)\).
 cons :: a -> BQueue a -> BQueue a
