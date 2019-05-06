@@ -23,11 +23,13 @@ library
   import: commons
   hs-source-dirs: lib
 
-  build-depends: deque >= 0.4
+  exposed-modules: Data.Queue.Bounded
+
+  build-depends: containers
                , deepseq
                , strict-list >= 0.1
+               , vector >= 0.12
 
-  exposed-modules: Data.Queue.Bounded
 
 benchmark bounded-queue-bench
   import: commons

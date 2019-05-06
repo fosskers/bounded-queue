@@ -11,30 +11,15 @@
 module Data.Queue.Bounded where
 
 import           Control.DeepSeq (NFData)
-import qualified Deque.Strict as DQ
-import           GHC.Exts (fromList)
+import           Control.Monad.ST (runST)
+import           Data.Foldable (foldl')
+import           Data.Ratio ((%))
+import           Data.Sequence (Seq(..), (<|))
+import qualified Data.Sequence as Seq
+import qualified Data.Vector.Storable as VS
+import qualified Data.Vector.Storable.Mutable as VSM
 import           GHC.Generics (Generic)
 import qualified StrictList as SL
-
----
-
--- | A bounded, strict `DQ.Deque` which drops old elements off its right side as
--- new elements are added (`DQ.cons`'d) to the left.
---
--- Not terribly robust.
---
-data BDQ a = BDQ { _bdq :: !(DQ.Deque a), _bdqLimit :: !Word }
-
--- | Create a `BDQ` that contains @n@ copies of some `a`.
---
-newBDQ :: a -> Word -> BDQ a
-newBDQ a n = BDQ as n
-  where
-    as = fromList . take (fromIntegral n) $ repeat a
-
--- | \(\mathcal{O}(1)\), occasionally \(\mathcal{O}(n)\).
-consBDQ :: a -> BDQ a -> BDQ a
-consBDQ a (BDQ q l) = BDQ (DQ.cons a $ DQ.init q) l
 
 ---
 
@@ -81,6 +66,54 @@ consBQSC :: a -> BQStrictCount a -> BQStrictCount a
 consBQSC a (BQStrictCount q l s)
   | s == l = BQStrictCount (SL.Cons a $ SL.init q) l s
   | otherwise = BQStrictCount (SL.Cons a q) l (succ s)
+
+---
+
+data BQSeq a = BQSeq
+  { _bqs      :: !(Seq a)
+  , _bqsLimit :: {-# UNPACK #-} !Int
+  , _bqsSize  :: {-# UNPACK #-} !Int }
+  deriving (Generic, NFData)
+
+instance Functor BQSeq where
+  fmap f (BQSeq q l s) = BQSeq (f <$> q) l s
+
+instance Foldable BQSeq where
+  foldMap f (BQSeq q _ _) = foldMap f q
+
+consSeq :: a -> BQSeq a -> BQSeq a
+consSeq a (BQSeq Empty l _) = BQSeq (Seq.singleton a) l 1
+consSeq a (BQSeq q@(rest :|> _) l s)
+  | s == l = BQSeq (a <| rest) l s
+  | otherwise = BQSeq (a <| q) l (succ s)
+
+avgSeq :: BQSeq Int -> Int
+avgSeq (BQSeq q _ s) = floor $ foldl' (+) 0 q % s
+
+---
+
+data BQVec a = BQVec
+  { _bqv      :: !(VS.Vector a)
+  , _bqvLimit :: {-# UNPACK #-} !Int
+  , _cursor   :: {-# UNPACK #-} !Int }
+  deriving (Generic, NFData)
+
+singleton :: VSM.Storable a => a -> Int -> BQVec a
+singleton a l = BQVec (VS.fromList . take l $ repeat a) l 1
+
+consVec :: VSM.Storable a => a -> BQVec a -> BQVec a
+consVec a (BQVec v l c) = BQVec v' l c'
+  where
+    c' = succ c `mod` l
+    -- v' = VS.unsafeUpd v [(c, a)]
+    v' = (VS.//) v [(c, a)]
+    -- v' = runST $ do
+    --   mv <- VS.unsafeThaw v
+    --   VSM.unsafeModify mv (const a) c
+    --   VS.unsafeFreeze mv
+
+avgVec :: BQVec Int -> Int
+avgVec (BQVec q _ s) = floor $ VS.foldl' (+) 0 q % s
 
 ---
 
