@@ -23,21 +23,21 @@ common commons
     ghc-options: -Wall -Wincomplete-record-updates -Wincomplete-uni-patterns
 
 library
-  import: commons
-  hs-source-dirs: lib
-  exposed-modules: Data.Queue.Bounded
-  build-depends: containers
-               , deepseq
+    import: commons
+    hs-source-dirs: lib
+    exposed-modules: Data.Queue.Bounded
+    build-depends: containers
+                 , deepseq
 
 test-suite bounded-queue-test
-  import: commons
-  type: exitcode-stdio-1.0
-  hs-source-dirs: test
-  main-is: Test.hs
-  ghc-options: -threaded -with-rtsopts=-N
-  build-depends: bounded-queue
-               , tasty >= 1.2
-               , tasty-hunit >= 0.10
+    import: commons
+    type: exitcode-stdio-1.0
+    hs-source-dirs: test
+    main-is: Test.hs
+    ghc-options: -threaded -with-rtsopts=-N
+    build-depends: bounded-queue
+                 , tasty >= 1.2
+                 , tasty-hunit >= 0.10
 
 -- benchmark bounded-queue-bench
 --   import: commons
