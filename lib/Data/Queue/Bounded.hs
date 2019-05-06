@@ -38,7 +38,7 @@ module Data.Queue.Bounded
   ) where
 
 import           Control.DeepSeq (NFData)
-import           Data.Foldable (foldl')
+import           Data.Foldable (foldl', toList)
 import           Data.Ratio ((%))
 import           Data.Sequence (Seq(..), (<|))
 import qualified Data.Sequence as Seq
@@ -53,7 +53,10 @@ data BQueue a = BQueue
   { _bqs      :: !(Seq a)
   , _bqsLimit :: {-# UNPACK #-} !Int
   , _bqsSize  :: {-# UNPACK #-} !Int }
-  deriving (Generic, NFData)
+  deriving (Eq, Generic, NFData)
+
+instance Show a => Show (BQueue a) where
+  show (BQueue q _ _) = show $ toList q
 
 instance Functor BQueue where
   fmap f (BQueue q l s) = BQueue (f <$> q) l s

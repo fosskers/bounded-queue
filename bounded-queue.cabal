@@ -29,11 +29,21 @@ library
   build-depends: containers
                , deepseq
 
-benchmark bounded-queue-bench
+test-suite bounded-queue-test
   import: commons
   type: exitcode-stdio-1.0
-  main-is: Bench.hs
-  hs-source-dirs: bench
-  ghc-options: -threaded -O2 -with-rtsopts=-N
+  hs-source-dirs: test
+  main-is: Test.hs
+  ghc-options: -threaded -with-rtsopts=-N
   build-depends: bounded-queue
-               , criterion >= 1.5
+               , tasty >= 1.2
+               , tasty-hunit >= 0.10
+
+-- benchmark bounded-queue-bench
+--   import: commons
+--   type: exitcode-stdio-1.0
+--   hs-source-dirs: bench
+--   main-is: Bench.hs
+--   ghc-options: -threaded -O2 -with-rtsopts=-N
+--   build-depends: bounded-queue
+--                , criterion >= 1.5
