@@ -1,120 +1,117 @@
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric  #-}
 
 -- |
 -- Module    : Data.Queue.Bounded
 -- Copyright : (c) Kadena LLC, 2019
 -- License   : BSD3
 -- Maintainer: Colin Woodbury <colin@kadena.io>
+--
+-- This library provides a strict, immutable, thread-safe, single-ended, bounded
+-- queue. When the insert limit is reached and a `cons` is attempted, this
+-- `BQueue` automatically drops old entries off its end. Thus, writes always
+-- succeed and never block.
+--
+-- This data structure is intended as a "sliding window" over some stream of
+-- data, where we wish old entries to be naturally forgotten. Since this is an
+-- immutable data structure and not a concurrent queue, we provide instances for
+-- the usual useful typeclasses with which one can perform analysis over the
+-- entire "window".
+--
+-- This module is intended to be imported qualified:
+--
+-- @
+-- import qualified Data.Queue.Bounded as BQ
+-- @
 
-module Data.Queue.Bounded where
+module Data.Queue.Bounded
+  ( -- * Type
+    BQueue()
+    -- * Construction
+  , empty, singleton, fromList
+    -- * Insertion / Removal
+  , cons, uncons
+    -- * Extra
+  , average
+  , reverse
+  , take, drop
+  ) where
 
 import           Control.DeepSeq (NFData)
-import           Control.Monad.ST (runST)
 import           Data.Foldable (foldl')
 import           Data.Ratio ((%))
 import           Data.Sequence (Seq(..), (<|))
 import qualified Data.Sequence as Seq
-import qualified Data.Vector.Storable as VS
-import qualified Data.Vector.Storable.Mutable as VSM
 import           GHC.Generics (Generic)
-import qualified StrictList as SL
+import           Prelude hiding (drop, reverse, take)
 
 ---
 
-data BQListTake a = BQListTake
-  { _bqlt      :: ![a]
-  , _bqltLimit :: {-# UNPACK #-} !Int }
-  deriving (Generic, NFData)
-
-consBQLT :: a -> BQListTake a -> BQListTake a
-consBQLT a (BQListTake q l) = BQListTake (take l $ a : q) l
-
----
-
-data BQListCount a = BQListCount
-  { _bqlc      :: ![a]
-  , _bqlcLimit :: {-# UNPACK #-} !Int
-  , _bqlcSize  :: {-# UNPACK #-} !Int }
-  deriving (Generic, NFData)
-
-consBQLC :: a -> BQListCount a -> BQListCount a
-consBQLC a (BQListCount q l s)
-  | s == l = BQListCount (a : init q) l s
-  | otherwise = BQListCount (a : q) l (succ s)
-
----
-
-data BQStrictTake a = BQStrictTake
-  { _bqst      :: !(SL.List a)
-  , _bqstLimit :: {-# UNPACK #-} !Int }
-  deriving (Generic, NFData)
-
-consBQST :: a -> BQStrictTake a -> BQStrictTake a
-consBQST a (BQStrictTake q l) = BQStrictTake (SL.take l $ SL.Cons a q) l
-
----
-
-data BQStrictCount a = BQStrictCount
-  { _bqsc      :: !(SL.List a)
-  , _bqscLimit :: {-# UNPACK #-} !Int
-  , _bqscSize  :: {-# UNPACK #-} !Int }
-  deriving (Generic, NFData)
-
-consBQSC :: a -> BQStrictCount a -> BQStrictCount a
-consBQSC a (BQStrictCount q l s)
-  | s == l = BQStrictCount (SL.Cons a $ SL.init q) l s
-  | otherwise = BQStrictCount (SL.Cons a q) l (succ s)
-
----
-
-data BQSeq a = BQSeq
+-- | A single-ended, bounded queue which keeps track of its size.
+data BQueue a = BQueue
   { _bqs      :: !(Seq a)
   , _bqsLimit :: {-# UNPACK #-} !Int
   , _bqsSize  :: {-# UNPACK #-} !Int }
   deriving (Generic, NFData)
 
-instance Functor BQSeq where
-  fmap f (BQSeq q l s) = BQSeq (f <$> q) l s
+instance Functor BQueue where
+  fmap f (BQueue q l s) = BQueue (f <$> q) l s
+  {-# INLINE fmap #-}
 
-instance Foldable BQSeq where
-  foldMap f (BQSeq q _ _) = foldMap f q
+-- | \(\mathcal{O}(1)\) `length` implementation.
+instance Foldable BQueue where
+  foldMap f (BQueue q _ _) = foldMap f q
+  {-# INLINE foldMap #-}
 
-consSeq :: a -> BQSeq a -> BQSeq a
-consSeq a (BQSeq Empty l _) = BQSeq (Seq.singleton a) l 1
-consSeq a (BQSeq q@(rest :|> _) l s)
-  | s == l = BQSeq (a <| rest) l s
-  | otherwise = BQSeq (a <| q) l (succ s)
+  length (BQueue _ _ s) = s
 
-avgSeq :: BQSeq Int -> Int
-avgSeq (BQSeq q _ s) = floor $ foldl' (+) 0 q % s
+instance Traversable BQueue where
+  traverse f (BQueue q l s) = (\q' -> BQueue q' l s) <$> traverse f q
+  {-# INLINE traverse #-}
 
----
+instance Semigroup (BQueue a) where
+  (BQueue q l s) <> (BQueue q' l' s') = BQueue (q <> q') (l + l') (s + s')
+  {-# INLINE (<>) #-}
 
-data BQVec a = BQVec
-  { _bqv      :: !(VS.Vector a)
-  , _bqvLimit :: {-# UNPACK #-} !Int
-  , _cursor   :: {-# UNPACK #-} !Int }
-  deriving (Generic, NFData)
+-- | Given a limit value, yield an empty `BQueue`.
+empty :: Int -> BQueue a
+empty l = BQueue mempty l 0
 
-singleton :: VSM.Storable a => a -> Int -> BQVec a
-singleton a l = BQVec (VS.fromList . take l $ repeat a) l 1
+-- | Given a limit value and an initial value, yield a singleton `BQueue`.
+singleton :: Int -> a -> BQueue a
+singleton l a = BQueue (Seq.singleton a) l 1
 
-consVec :: VSM.Storable a => a -> BQVec a -> BQVec a
-consVec a (BQVec v l c) = BQVec v' l c'
-  where
-    c' = succ c `mod` l
-    -- v' = VS.unsafeUpd v [(c, a)]
-    v' = (VS.//) v [(c, a)]
-    -- v' = runST $ do
-    --   mv <- VS.unsafeThaw v
-    --   VSM.unsafeModify mv (const a) c
-    --   VS.unsafeFreeze mv
+-- | \(\mathcal{O}(c)\). Naively keeps the first \(c\) values of the input list
+-- (as defined by the given limiting `Int` value) and does not attempt any
+-- elegant queue-like cycling.
+fromList :: Int -> [a] -> BQueue a
+fromList n list = undefined
 
-avgVec :: BQVec Int -> Int
-avgVec (BQVec q _ s) = floor $ VS.foldl' (+) 0 q % s
+-- | \(\mathcal{O}(1)\).
+cons :: a -> BQueue a -> BQueue a
+cons a (BQueue Empty l _) = BQueue (Seq.singleton a) l 1
+cons a (BQueue q@(rest :|> _) l s)
+  | s == l = BQueue (a <| rest) l s
+  | otherwise = BQueue (a <| q) l (succ s)
 
----
+-- | \(\mathcal{O}(1)\).
+uncons :: BQueue a -> Maybe (a, BQueue a)
+uncons (BQueue Empty _ _)     = Nothing
+uncons (BQueue (h :<| t) l s) = Just (h, BQueue t l $ pred s)
 
-deriving instance (NFData a) => NFData (SL.List a)
+-- | \(\mathcal{O}(n)\).
+average :: Integral a => BQueue a -> a
+average (BQueue q _ s) = floor $ foldl' (+) 0 q % fromIntegral s
+{-# INLINE average #-}
+
+-- | \(\mathcal{O}(n)\).
+reverse :: BQueue a -> BQueue a
+reverse (BQueue q l s) = BQueue (Seq.reverse q) l s
+
+-- | \(\mathcal{O}(\log(\min(i,n-i)))\).
+take :: Int -> BQueue a -> BQueue a
+take n (BQueue q l s) = BQueue (Seq.take n q) l $ min n s
+
+-- | \(\mathcal{O}(\log(\min(i,n-i)))\).
+drop :: Int -> BQueue a -> BQueue a
+drop n (BQueue q l s) = BQueue (Seq.drop n q) l $ max 0 (s - n)
