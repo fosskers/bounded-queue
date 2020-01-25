@@ -1,8 +1,1 @@
-resolver: lts-13.19
-
-packages:
-  - .
-
-extra-deps:
-  - deque-0.4.2.1
-  - strict-list-0.1.4
+resolver: lts-14.21
