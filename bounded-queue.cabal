@@ -9,7 +9,7 @@ description:
   which automatically forgets old values instead of blocking.
 
 category:           Data
-homepage:           https://gitlab.com/fosskers/bounded-queue
+homepage:           https://github.com/fosskers/bounded-queue
 author:             Colin Woodbury
 maintainer:         colin@kadena.io
 copyright:          2019 Kadena LLC
